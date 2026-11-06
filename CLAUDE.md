@@ -26,7 +26,8 @@ src/tracer/
   bootstrap/     composition root: builds and wires every concrete object
   modules/       business capabilities (from M1), each: domain/ application/ adapters/
   platform/      reusable infrastructure: configuration, database, observability, ...
-  shared/        tiny dependency-free kernel: clock, health contract, ids, ...
+  shared/        shared kernel, pure Python: typed ids, Money, Quantity, TimeRange, Clock,
+                 domain errors, AggregateRoot/DomainEvent, health contract
 migrations/      Alembic revisions (0001_baseline.py, 0002_...)
 tests/           unit/ integration/ architecture/ (+ workflow/ evaluation/ e2e/ later)
 decision_logs/   one document per module: what was built, why, how to learn it (local, git-ignored)
@@ -59,6 +60,17 @@ entrypoints -> bootstrap -> modules -> platform -> shared
 - **Domain model.** Value objects are immutable and validate themselves. Aggregates
   protect their invariants; state transitions are methods that refuse invalid moves.
   Business rules are testable without a database.
+  - A state-changing method: check status and rules, then change state, then record exactly
+    one past-tense event. A refused action changes nothing and records nothing; a no-op
+    records nothing.
+  - New aggregates come from a named factory (`detect`, `propose`, `create`); the plain
+    constructor rebuilds stored state and re-checks every invariant.
+  - Aggregates are small and reference other aggregates by typed id only.
+  - Money is `Decimal` + currency; Quantity is `Decimal` + unit. Never `float`. No arithmetic
+    across currencies or units; conversions are explicit (`ExchangeRate`, `convert_to`,
+    product-specific `PackagingConversion`). No implicit rounding.
+  - Ids are typed (`SupplierId`, `ProductId`, ...); never pass a bare UUID or string.
+  - Domain errors subclass `DomainError` and have messages written for a person.
 - **Patterns, used where they solve a problem:** Repository (per aggregate), Unit of Work,
   Strategy, Adapter, State Machine, Transactional Outbox, Idempotent Consumer, Saga,
   Specification, Circuit Breaker. Not used yet: microservices, event sourcing, CQRS

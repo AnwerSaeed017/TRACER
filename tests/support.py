@@ -1,9 +1,13 @@
 """Helpers shared by tests. Not test cases themselves."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from tracer.platform.configuration.settings import Settings
+
+# A fixed "now" for domain tests: 5 November 2026, 09:00 UTC.
+T0 = datetime(2026, 11, 5, 9, 0, tzinfo=UTC)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations"

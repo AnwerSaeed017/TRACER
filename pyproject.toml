@@ -25,6 +25,7 @@ packages = ["src/tracer"]
 [dependency-groups]
 dev = [
     "httpx2>=2.16.0",
+    "hypothesis>=6.170.15",
     "import-linter>=2.16",
     "mypy>=2.4.1",
     "pre-commit>=4.7.0",
@@ -86,19 +87,37 @@ root_package = "tracer"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: entrypoints -> bootstrap -> platform -> shared"
+name = "Layers: entrypoints -> bootstrap -> modules -> platform -> shared"
 type = "layers"
-# M1 inserts "tracer.modules" between bootstrap and platform, when the first module exists.
 layers = [
     "tracer.entrypoints",
     "tracer.bootstrap",
+    "tracer.modules",
     "tracer.platform",
     "tracer.shared",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Shared kernel depends on nothing third-party but the standard library and pydantic"
+name = "Modules are independent; they share only the kernel and refer to each other by id"
+type = "independence"
+modules = [
+    "tracer.modules.supply_chain",
+    "tracer.modules.decisioning",
+    "tracer.modules.execution",
+]
+
+[[tool.importlinter.contracts]]
+name = "Shared kernel and domain models are pure Python"
 type = "forbidden"
-source_modules = ["tracer.shared"]
-forbidden_modules = ["fastapi", "starlette", "sqlalchemy", "alembic", "asyncpg", "uvicorn"]
-allow_indirect_imports = true
+source_modules = ["tracer.shared", "tracer.modules.*.domain"]
+forbidden_modules = [
+    "tracer.platform",
+    "fastapi",
+    "starlette",
+    "pydantic",
+    "pydantic_settings",
+    "sqlalchemy",
+    "alembic",
+    "asyncpg",
+    "uvicorn",
+]

@@ -1,9 +1,11 @@
-"""Turn exceptions into Problem Details responses.
+"""Turn exceptions into Problem Details responses, in one place.
 
-Unexpected exceptions are handled by ``RequestContextMiddleware`` instead, so that a 500
-still carries the request id header and is logged with the request's context.
+Domain errors map to statuses by type, most specific first. Unexpected exceptions are handled
+by ``RequestContextMiddleware`` instead, so that a 500 still carries the request id header
+and is logged with the request's context.
 """
 
+import logging
 from http import HTTPStatus
 from typing import Any
 
@@ -13,6 +15,31 @@ from starlette.exceptions import HTTPException
 from starlette.responses import Response
 
 from tracer.entrypoints.http.problems import problem_response
+from tracer.shared.errors import (
+    AuthenticationError,
+    BusinessRuleError,
+    ConcurrencyConflictError,
+    DomainError,
+    InvalidTransitionError,
+    InvalidValueError,
+)
+
+logger = logging.getLogger("tracer.http")
+
+_STATUS_BY_ERROR: tuple[tuple[type[DomainError], HTTPStatus], ...] = (
+    (AuthenticationError, HTTPStatus.UNAUTHORIZED),
+    (InvalidValueError, HTTPStatus.UNPROCESSABLE_ENTITY),
+    (ConcurrencyConflictError, HTTPStatus.CONFLICT),
+    (InvalidTransitionError, HTTPStatus.CONFLICT),
+    (BusinessRuleError, HTTPStatus.CONFLICT),
+)
+
+
+def status_for(error: DomainError) -> HTTPStatus:
+    for error_type, status in _STATUS_BY_ERROR:
+        if isinstance(error, error_type):
+            return status
+    return HTTPStatus.BAD_REQUEST
 
 
 async def _http_exception(request: Request, exc: Exception) -> Response:
@@ -40,6 +67,17 @@ async def _validation_error(request: Request, exc: Exception) -> Response:
     )
 
 
+async def _domain_error(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, DomainError)  # noqa: S101
+    if isinstance(exc, AuthenticationError):
+        # Repeated failures from one source mean an attack or a misconfigured sender: worth a
+        # warning. Path only; headers and body may carry the material being guessed.
+        logger.warning("authentication failed", extra={"path": request.url.path})
+    # Domain messages are written for people and contain no internals, so they are shown.
+    return problem_response(status_for(exc), detail=str(exc), instance=request.url.path)
+
+
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(HTTPException, _http_exception)
     app.add_exception_handler(RequestValidationError, _validation_error)
+    app.add_exception_handler(DomainError, _domain_error)

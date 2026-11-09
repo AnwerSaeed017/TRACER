@@ -76,6 +76,23 @@ entrypoints -> bootstrap -> modules -> platform -> shared
   Specification, Circuit Breaker. Not used yet: microservices, event sourcing, CQRS
   everywhere, a repository per table.
 
+## Code vs configuration (multi-tenant)
+
+One shared core for every customer; customers differ by **data**, not by code forks.
+
+| In code (same for every tenant) | As tenant data / configuration |
+|---|---|
+| Money, Quantity, ids, time; arithmetic rules | currencies used, custom units (e.g. DRUM) |
+| Aggregate lifecycles and safety invariants | approval limits, SLA thresholds, policies |
+| What each *core* disruption kind triggers | tenant sub-categories of a core kind |
+| Execution safety (idempotency, unknown outcome) | connector capabilities, ERP/WMS field mappings |
+| Ontology *meaning* of core entities | ontology extensions, packaging conversions, master data |
+
+- Configuration is **versioned and audited**; every decision records the policy/config version
+  it was evaluated under.
+- A value that has a currency or unit carries it **per value**, never in a schema default.
+- Customers never upload code. Genuinely different integrations are new adapters behind ports.
+
 ## Persistence
 
 - PostgreSQL 16, SQLAlchemy 2 async with asyncpg. Async end to end: no blocking I/O inside
@@ -90,6 +107,12 @@ entrypoints -> bootstrap -> modules -> platform -> shared
   Never edit a migration that has been merged. `tests/integration` fails if models and
   migrations disagree.
 - Every business table has `tenant_id`; every query filters on it.
+- **Saving an aggregate saves its events**: the repository writes pending events to the
+  outbox in the same session, and updates with `WHERE version = <loaded version>`
+  (optimistic concurrency, `ConcurrencyConflictError`).
+- Map domain <-> rows explicitly in the repository; domain classes are never ORM-mapped.
+- Repeat key domain rules as CHECK constraints. Nullable JSONB columns use
+  `JSONB(none_as_null=True)`.
 - Indexes for every filter and foreign key, declared on the model. Constraint names come
   from the naming convention in `platform/database/base.py`.
 - Never hold a database lock (or a transaction) across an LLM call or an external API call.
@@ -154,6 +177,14 @@ entrypoints -> bootstrap -> modules -> platform -> shared
 - Server-managed fields (ids, timestamps, tenant, status) are never taken from client input.
 - Every list endpoint is paginated with a default and a maximum page size.
 - `/health/live` checks nothing external; `/health/ready` checks every dependency.
+- **Inbound webhooks**, in this order: size cap (streamed) → authentication (HMAC-SHA256 over
+  `event_id.timestamp.body`, fresh timestamp per attempt, replay window, constant-time compare,
+  rotating secrets, one generic 401) → strict schema (`extra="forbid"`) → use case. Tenant comes
+  from the source's configuration, never the payload. Store the raw body as evidence.
+- **Identity.** The sender's stable event id is the only duplicate key (durable inbox, kept
+  forever). Identical content is a *hint* (`possible_duplicate_of`), never a reason to drop an
+  event: a missed disruption is worse than a repeated one. Deduplicate with database constraints
+  and `INSERT ... ON CONFLICT`, never check-then-insert. Duplicates answer 202.
 
 ## Configuration, security, logging
 

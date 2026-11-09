@@ -39,3 +39,23 @@ class InvalidTransitionError(DomainError):
 
 class BusinessRuleError(DomainError):
     """A rule other than a status check refused the operation."""
+
+
+class AuthenticationError(DomainError):
+    """The caller could not prove who it is. The message is deliberately generic."""
+
+    def __init__(self) -> None:
+        super().__init__("authentication failed")
+
+
+class ConcurrencyConflictError(DomainError):
+    """Someone else changed the same aggregate first. Reload it and try again."""
+
+    def __init__(self, aggregate: str, aggregate_id: str, expected_version: int) -> None:
+        super().__init__(
+            f"this {aggregate} was changed by someone else (expected version "
+            f"{expected_version}); reload it and try again"
+        )
+        self.aggregate = aggregate
+        self.aggregate_id = aggregate_id
+        self.expected_version = expected_version

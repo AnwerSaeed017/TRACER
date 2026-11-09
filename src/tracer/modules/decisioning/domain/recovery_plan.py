@@ -17,6 +17,7 @@
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import ClassVar
 
 from tracer.modules.decisioning.domain.events import (
     RecoveryPlanApproved,
@@ -45,6 +46,8 @@ _VALIDATION_FAILED = "failed validation"
 
 
 class RecoveryPlan(AggregateRoot):
+    AGGREGATE_TYPE: ClassVar[str] = "recovery_plan"
+
     def __init__(
         self,
         *,
@@ -58,9 +61,10 @@ class RecoveryPlan(AggregateRoot):
         approval: Approval | None,
         violations: tuple[str, ...],
         status_reason: str | None,
+        version: int = 0,
     ) -> None:
         """Rebuild a plan from known state. New plans come from ``propose``."""
-        super().__init__()
+        super().__init__(version=version)
         self._id = plan_id
         self._tenant_id = tenant_id
         self._case_id = case_id

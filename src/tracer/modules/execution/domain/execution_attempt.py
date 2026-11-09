@@ -12,6 +12,8 @@ it must first be reconciled by asking the external system what actually happened
 try sends the same idempotency key, so even a mistaken resend is ignored downstream.
 """
 
+from typing import ClassVar
+
 from tracer.modules.execution.domain.events import (
     ActionExecuted,
     ExecutionFailed,
@@ -41,6 +43,8 @@ _NOT_APPLIED = "not applied, confirmed by reconciliation"
 
 
 class ExecutionAttempt(AggregateRoot):
+    AGGREGATE_TYPE: ClassVar[str] = "execution_attempt"
+
     def __init__(
         self,
         *,
@@ -56,9 +60,10 @@ class ExecutionAttempt(AggregateRoot):
         tries: int,
         external_reference: str | None,
         last_failure: ExecutionFailure | None,
+        version: int = 0,
     ) -> None:
         """Rebuild an attempt from known state. New attempts come from ``create``."""
-        super().__init__()
+        super().__init__(version=version)
         self._id = attempt_id
         self._tenant_id = tenant_id
         self._plan_id = plan_id

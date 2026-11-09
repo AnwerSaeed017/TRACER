@@ -8,7 +8,8 @@ customer orders it touches, investigates likely causes against evidence, simulat
 options, verifies them against business rules, asks an authorised person to approve, executes
 through the existing ERP/WMS and confirms the result.
 
-> Status: **M0, engineering foundation.** No business features yet.
+> Status: **M2, integration and ingestion (in progress).** Signed webhook intake with evidence
+> storage, delivery deduplication and a transactional outbox. Domain model (M1) in place.
 
 ## Requirements
 
@@ -41,6 +42,9 @@ Invalid values stop start-up with a message naming the setting.
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | `5` | |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | enforced by PostgreSQL on every connection |
 | `READINESS_TIMEOUT_SECONDS` | `3` | per health check |
+| `WEBHOOK_SOURCES` | `[]` | JSON list: `[{"name": "acme-portal", "tenant_id": "<uuid>", "secrets": ["<32+ chars>"]}]` |
+| `WEBHOOK_TOLERANCE_SECONDS` | `300` | how old a signed timestamp may be (replay window) |
+| `WEBHOOK_MAX_BODY_BYTES` | `262144` | larger bodies get 413 |
 
 ## Run
 
@@ -50,6 +54,40 @@ uv run tracer serve                      # http://127.0.0.1:8000/docs
 
 - `GET /health/live`: the process is up.
 - `GET /health/ready`: the database is reachable and migrated to the latest revision.
+- `POST /webhooks/{source}/disruption-reports`: a signed disruption report (see below).
+
+### Sending a webhook
+
+Each request carries three headers:
+
+| Header | Value | On a retry |
+|---|---|---|
+| `X-Tracer-Event-Id` | your id for this event (1–64 of `A-Za-z0-9_:-`, no `.`) | **the same** |
+| `X-Tracer-Timestamp` | Unix time in seconds when this attempt is sent | **new** |
+| `X-Tracer-Signature` | `sha256=` + hex HMAC-SHA256 of `"<event id>.<timestamp>." + <raw body>` | **recomputed** |
+
+Sign the exact bytes you send. Timestamps more than 5 minutes from TRACER's clock (either way)
+are refused, so always re-sign when you retry. A source may have up to three active secrets,
+which allows rotation without downtime.
+
+Body:
+
+```json
+{
+  "kind": "shipment_delay",
+  "summary": "SHIP-501 delayed by 7 days",
+  "impact_start": "2026-11-10T00:00:00Z",
+  "impact_end": "2026-11-17T00:00:00Z",
+  "references": {"suppliers": ["SUP-001"], "shipments": ["SHIP-501"]}
+}
+```
+
+`kind` is one of `shipment_delay`, `supplier_failure`, `port_congestion`,
+`capacity_shortage`, `quality_issue`, `other`. Unknown fields are rejected.
+The answer is `202` once the report is durably stored, with `status` `accepted` or
+`duplicate` (this event id was already received): stop retrying on either. Identical content
+under a *new* event id is accepted as a new event. `401` means the source, event id, timestamp
+or signature was not accepted.
 
 ## Check
 

@@ -13,6 +13,7 @@
 
 from collections.abc import Iterable
 from datetime import datetime
+from typing import ClassVar
 
 from tracer.modules.supply_chain.domain.events import (
     DisruptionDetected,
@@ -43,6 +44,8 @@ _NAME = "disruption case"
 
 
 class DisruptionCase(AggregateRoot):
+    AGGREGATE_TYPE: ClassVar[str] = "disruption_case"
+
     def __init__(
         self,
         *,
@@ -56,9 +59,10 @@ class DisruptionCase(AggregateRoot):
         impact_window: TimeRange | None,
         status: CaseStatus,
         closure: CaseClosure | None,
+        version: int = 0,
     ) -> None:
         """Rebuild a case from known state. New cases come from ``detect``."""
-        super().__init__()
+        super().__init__(version=version)
         self._id = case_id
         self._tenant_id = tenant_id
         self._kind = DisruptionKind(kind)

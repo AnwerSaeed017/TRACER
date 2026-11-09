@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from tracer.bootstrap.composition_root import Container, build_container
 from tracer.entrypoints.http.error_handlers import register_error_handlers
 from tracer.entrypoints.http.middleware import RequestContextMiddleware
-from tracer.entrypoints.http.routers import health
+from tracer.entrypoints.http.routers import health, webhooks
 from tracer.platform.configuration.settings import load_settings
 from tracer.platform.observability.logging import configure_logging
 
@@ -46,6 +46,7 @@ def create_app(container: Container) -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(webhooks.router)
     return app
 
 

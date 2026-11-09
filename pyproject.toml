@@ -63,7 +63,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]   # assert and fake credentials are fine in tests
-"migrations/**" = ["N999"]
+"migrations/**" = ["N999", "E501"]   # generated SQL strings are not wrapped by hand
 
 [tool.mypy]
 python_version = "3.12"
@@ -101,6 +101,7 @@ layers = [
 name = "Modules are independent; they share only the kernel and refer to each other by id"
 type = "independence"
 modules = [
+    "tracer.modules.ingestion",
     "tracer.modules.supply_chain",
     "tracer.modules.decisioning",
     "tracer.modules.execution",

@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     readiness_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
     migrations_dir: Path = Path("migrations")
 
+    outbox_batch_size: int = Field(default=50, ge=1, le=500)
+    outbox_lease_seconds: float = Field(default=30.0, ge=1, le=600)
+    outbox_max_attempts: int = Field(default=10, ge=1, le=100)
+    outbox_backoff_base_seconds: float = Field(default=1.0, gt=0, le=60)
+    outbox_backoff_max_seconds: float = Field(default=300.0, gt=0, le=3600)
+    outbox_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
+
     webhook_sources: tuple[WebhookSource, ...] = ()
     webhook_tolerance_seconds: int = Field(default=300, ge=30, le=900)
     webhook_max_body_bytes: int = Field(default=262_144, ge=1024, le=5_242_880)

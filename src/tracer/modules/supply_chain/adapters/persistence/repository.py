@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tracer.modules.supply_chain.adapters.persistence.models import DisruptionCaseRecord
 from tracer.modules.supply_chain.domain.disruption_case import DisruptionCase
 from tracer.modules.supply_chain.domain.values import (
+    OPEN_STATUSES,
     AffectedEntities,
     CaseClosure,
     CaseResolution,
@@ -55,6 +56,22 @@ class SqlAlchemyDisruptionCaseRepository:
         statement = select(DisruptionCaseRecord).where(
             DisruptionCaseRecord.id == case_id.value,
             DisruptionCaseRecord.tenant_id == tenant_id.value,
+        )
+        record = (await self._session.execute(statement)).scalar_one_or_none()
+        return None if record is None else _to_domain(record)
+
+    async def find_open_by_evidence(
+        self, tenant_id: TenantId, evidence_id: EvidenceId
+    ) -> DisruptionCase | None:
+        statement = (
+            select(DisruptionCaseRecord)
+            .where(
+                DisruptionCaseRecord.tenant_id == tenant_id.value,
+                DisruptionCaseRecord.evidence_ids.contains([evidence_id.value]),  # GIN-indexed @>
+                DisruptionCaseRecord.status.in_([s.value for s in OPEN_STATUSES]),
+            )
+            .order_by(DisruptionCaseRecord.detected_at, DisruptionCaseRecord.id)
+            .limit(1)
         )
         record = (await self._session.execute(statement)).scalar_one_or_none()
         return None if record is None else _to_domain(record)

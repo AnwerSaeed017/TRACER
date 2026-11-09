@@ -42,6 +42,11 @@ Invalid values stop start-up with a message naming the setting.
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | `5` | |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | enforced by PostgreSQL on every connection |
 | `READINESS_TIMEOUT_SECONDS` | `3` | per health check |
+| `OUTBOX_BATCH_SIZE` | `50` | events claimed per worker pass |
+| `OUTBOX_LEASE_SECONDS` | `30` | a claimed event is reclaimable after this if its worker died |
+| `OUTBOX_MAX_ATTEMPTS` | `10` | then the event is dead-lettered |
+| `OUTBOX_BACKOFF_BASE_SECONDS` / `_MAX_SECONDS` | `1` / `300` | exponential backoff with full jitter |
+| `OUTBOX_POLL_INTERVAL_SECONDS` | `1` | idle wait between passes |
 | `WEBHOOK_SOURCES` | `[]` | JSON list: `[{"name": "acme-portal", "tenant_id": "<uuid>", "secrets": ["<32+ chars>"]}]` |
 | `WEBHOOK_TOLERANCE_SECONDS` | `300` | how old a signed timestamp may be (replay window) |
 | `WEBHOOK_MAX_BODY_BYTES` | `262144` | larger bodies get 413 |
@@ -50,7 +55,13 @@ Invalid values stop start-up with a message naming the setting.
 
 ```bash
 uv run tracer serve                      # http://127.0.0.1:8000/docs
+uv run tracer worker                     # deliver outbox events (run one or several)
+uv run tracer outbox replay <event-id>   # retry a dead-lettered event after fixing its cause
 ```
+
+The API stores events in a transactional outbox; the worker delivers them to consumers
+(at least once, in order per aggregate, with retries and dead-lettering). A received
+disruption report becomes a `DisruptionCase` once a worker has delivered it.
 
 - `GET /health/live`: the process is up.
 - `GET /health/ready`: the database is reachable and migrated to the latest revision.

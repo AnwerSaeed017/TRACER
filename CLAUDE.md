@@ -104,6 +104,8 @@ One shared core for every customer; customers differ by **data**, not by code fo
   tests.
 - **Models are the source of truth.** Change the model, then
   `uv run alembic revision --autogenerate -m "..." --rev-id NNNN`, then review the file.
+  Autogenerate does **not** compare CHECK constraints: write those changes by hand, with names
+  wrapped in `op.f(...)` (otherwise the naming convention is applied twice).
   Never edit a migration that has been merged. `tests/integration` fails if models and
   migrations disagree.
 - Every business table has `tenant_id`; every query filters on it.
@@ -139,6 +141,15 @@ One shared core for every customer; customers differ by **data**, not by code fo
 - Durable events use a transactional outbox written in the same transaction as the business
   change, dispatched by a worker. `LISTEN/NOTIFY` may wake workers but is never the queue.
 - Every consumer is idempotent (dedupe by source id or idempotency key).
+- The outbox dispatcher claims with `FOR UPDATE SKIP LOCKED` in a short transaction, holds a
+  lease (no transaction open while handlers run), settles only rows it still holds
+  (`claimed_by = me`), retries with exponential backoff + full jitter, dead-letters permanent
+  failures at once, and delivers an aggregate's events strictly in version order.
+- A consumer claims `(consumer, event_id)` in `processed_events` **in the same transaction** as
+  the change the event causes. Consumers read payloads with their own tolerant schema, check
+  `schema_version`, and raise `PermanentDeliveryError` for what they cannot read.
+- In-process handlers are registered in the composition root. No external broker until a
+  measured need.
 - External actions follow an explicit state machine
   (PROPOSED → VALIDATED → AWAITING_APPROVAL → APPROVED → EXECUTING →
   COMMITTED | FAILED | UNKNOWN → RECONCILING → COMMITTED | COMPENSATED) with idempotency

@@ -71,7 +71,9 @@ async def migrated(alembic_config: Config) -> None:
 
 
 # Every table the application writes. Each test that uses `sessions` starts from empty tables.
-APPLICATION_TABLES = "outbox_events, disruption_cases, inbox_messages, source_documents"
+APPLICATION_TABLES = (
+    "outbox_events, processed_events, disruption_cases, inbox_messages, source_documents"
+)
 
 
 @pytest.fixture

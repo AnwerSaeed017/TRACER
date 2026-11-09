@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from tracer.modules.ingestion.adapters.webhook_signature import sign
+from tracer.modules.ingestion.application.intake import DisruptionReportCommand
+from tracer.modules.ingestion.domain.report import ExternalReferences
+from tracer.modules.ingestion.domain.source_document import Channel
 from tracer.platform.configuration.settings import Settings
+from tracer.shared.identifiers import TenantId
 
 # A fixed "now" for domain tests: 5 November 2026, 09:00 UTC.
 T0 = datetime(2026, 11, 5, 9, 0, tzinfo=UTC)
@@ -37,6 +41,29 @@ def signed_headers(
         "X-Tracer-Timestamp": str(timestamp),
         "X-Tracer-Signature": sign(secret.encode(), event_id, timestamp, body),
     }
+
+
+def report_command(
+    event_id: str,
+    tenant: TenantId,
+    *,
+    kind: str = "shipment_delay",
+    content: bytes = b'{"kind":"shipment_delay","summary":"SHIP-501 delayed by 7 days"}',
+) -> DisruptionReportCommand:
+    """A disruption report as the webhook router would hand it to the intake use case."""
+    return DisruptionReportCommand(
+        tenant_id=tenant,
+        channel=Channel.WEBHOOK,
+        source_name=WEBHOOK_SOURCE,
+        source_event_id=event_id,
+        media_type="application/json",
+        content=content,
+        kind=kind,
+        summary="SHIP-501 delayed by 7 days",
+        impact_start=None,
+        impact_end=None,
+        references=ExternalReferences(),
+    )
 
 
 # Port 1 on loopback: nothing listens there, so connecting fails fast and deterministically.

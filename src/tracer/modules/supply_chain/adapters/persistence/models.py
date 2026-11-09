@@ -54,4 +54,6 @@ class DisruptionCaseRecord(Base):
         # Every query is per tenant; the common ones filter on status or sort by time.
         Index("ix_disruption_cases_tenant_status", "tenant_id", "status"),
         Index("ix_disruption_cases_tenant_detected_at", "tenant_id", "detected_at"),
+        # "Which case cites this evidence?": array containment (@>) needs a GIN index.
+        Index("ix_disruption_cases_evidence_ids", "evidence_ids", postgresql_using="gin"),
     )

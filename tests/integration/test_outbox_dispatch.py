@@ -254,11 +254,33 @@ async def test_a_failure_before_the_consumer_commits_is_retried_and_applied_once
     assert (row.status, row.attempts, row.last_error) == ("published", 2, None)
 
 
+async def test_a_stale_delivery_cannot_settle_a_newer_claim_by_the_same_worker(
+    container: Container, sessions: async_sessionmaker[AsyncSession], clock: FrozenClock
+) -> None:
+    await receive(container, "evt-stall", TenantId.new())
+    worker = container.outbox_dispatcher
+
+    [first] = await worker.claim_batch()  # delivery 1 starts ... and stalls past its lease
+    clock.advance(LEASE + timedelta(seconds=1))
+    [second] = await worker.claim_batch()  # the SAME worker claims the event again
+    assert second.claim_token != first.claim_token
+
+    # The stalled delivery finally finishes: it must not settle the newer claim.
+    assert await worker.deliver(first) is Outcome.LEASE_LOST
+    [row] = await outbox_of_type(sessions, REPORT_RECEIVED)
+    assert (row.status, row.claim_token) == ("processing", second.claim_token)
+
+    assert await worker.deliver(second) is Outcome.PUBLISHED  # the current claim still works
+    assert len(await cases(sessions)) == 1
+
+
 # ---------------------------------------------------------------------- dead letters
 
 
 async def test_a_permanent_failure_is_dead_lettered_at_once_and_can_be_replayed(
-    container: Container, sessions: async_sessionmaker[AsyncSession]
+    container: Container,
+    sessions: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     await receive(container, "evt-bad-kind", TenantId.new(), kind="alien_invasion")
 
@@ -270,10 +292,26 @@ async def test_a_permanent_failure_is_dead_lettered_at_once_and_can_be_replayed(
     assert "unknown disruption kind 'alien_invasion'" in row.last_error
     assert await cases(sessions) == []
 
-    assert await container.outbox_dispatcher.replay_dead(row.event_id)
+    with caplog.at_level("WARNING", logger="tracer.outbox"):
+        replayed_ok = await container.outbox_dispatcher.replay_dead(
+            row.event_id, actor="anwer", reason="kind added to the ontology"
+        )
+    assert replayed_ok
     [replayed] = await outbox(sessions)
     assert (replayed.status, replayed.attempts) == ("pending", 0)
-    assert not await container.outbox_dispatcher.replay_dead(row.event_id)  # no longer dead
+    assert replayed.payload == row.payload  # the event itself is never edited
+    assert replayed.last_error == row.last_error  # history kept until the next attempt
+    [audit] = [r for r in caplog.records if r.getMessage() == "dead outbox event replayed"]
+    assert audit.__dict__["actor"] == "anwer"
+    assert audit.__dict__["reason"] == "kind added to the ontology"
+    assert audit.__dict__["previous_attempts"] == 1
+    assert "alien_invasion" in audit.__dict__["previous_error"]
+    # no longer dead, so a second replay is refused
+    assert not await container.outbox_dispatcher.replay_dead(
+        row.event_id, actor="anwer", reason="again"
+    )
+    with pytest.raises(ValueError, match="actor and a reason"):
+        await container.outbox_dispatcher.replay_dead(row.event_id, actor="anwer", reason=" ")
 
 
 async def test_retries_stop_after_the_maximum_attempts(

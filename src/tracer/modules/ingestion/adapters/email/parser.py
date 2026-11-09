@@ -101,8 +101,10 @@ class StandardLibraryEmailParser:
 
         body = plain if plain is not None else _html_to_text(html) if html is not None else ""
         subject = _header(message, "Subject", _MAX_SUBJECT_CHARACTERS) or ""
-        if not subject and not body.strip():
-            raise InvalidValueError("the email has neither a subject nor a readable body")
+        if not subject and not body.strip() and not attachments:
+            # An attachment-only email (a bill of lading with no text) is still evidence and is
+            # kept; only an email with nothing at all in it is refused.
+            raise InvalidValueError("the email has no subject, readable body or attachment")
         return ParsedEmail(
             message_id=_header(message, "Message-ID", _MAX_HEADER_CHARACTERS),
             sender=_header(message, "From", _MAX_HEADER_CHARACTERS),

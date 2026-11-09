@@ -30,9 +30,9 @@ async def run_worker(settings: Settings) -> None:
         await container.aclose()
 
 
-async def replay_dead_event(settings: Settings, event_id: UUID) -> bool:
+async def replay_dead_event(settings: Settings, event_id: UUID, *, actor: str, reason: str) -> bool:
     container = build_container(settings)
     try:
-        return await container.outbox_dispatcher.replay_dead(event_id)
+        return await container.outbox_dispatcher.replay_dead(event_id, actor=actor, reason=reason)
     finally:
         await container.aclose()

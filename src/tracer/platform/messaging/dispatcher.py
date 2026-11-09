@@ -10,8 +10,9 @@ One pass (``dispatch_once``):
 2. **Deliver** each event to every handler subscribed to its type.
 3. **Settle**: success -> ``published``; transient failure -> back to ``pending`` with
    exponential backoff and jitter; permanent failure or attempts exhausted -> ``dead``.
-   Settling only touches rows this worker still holds (``claimed_by = me``): a worker whose
-   lease expired cannot overwrite the result of the worker that took over.
+   Settling only touches the row if this delivery's ``claim_token`` is still the current one:
+   a fresh token is issued on every claim, so a delivery whose lease expired cannot overwrite
+   the result of whoever claimed the event next, even when that is the same worker.
 
 **Ordering.** An event is claimed only when every earlier event of the same aggregate is
 published. At most one event per aggregate is in flight, and consumers see an aggregate's
@@ -31,7 +32,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
 from typing import Any, Final, Protocol, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import CursorResult, and_, exists, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -81,6 +82,7 @@ class Outcome(StrEnum):
 class ClaimedEvent:
     envelope: EventEnvelope
     attempt: int  # 1 for the first delivery
+    claim_token: UUID  # proves this delivery still owns the claim when it settles
 
 
 def is_permanent(error: BaseException) -> bool:
@@ -175,12 +177,15 @@ class OutboxDispatcher:
                 .scalars()
                 .all()
             )
+            claimed: list[ClaimedEvent] = []
             for row in rows:
+                token = uuid4()  # a fresh fencing token for this claim only
                 row.status = OutboxStatus.PROCESSING.value
                 row.claimed_by = self._worker_id
+                row.claim_token = token
                 row.lease_expires_at = now + self._policy.lease
                 row.attempts += 1
-            claimed = [ClaimedEvent(_envelope(row), row.attempts) for row in rows]
+                claimed.append(ClaimedEvent(_envelope(row), row.attempts, token))
         return claimed
 
     # ---------------------------------------------------------------- deliver
@@ -241,9 +246,15 @@ class OutboxDispatcher:
                 .where(
                     OutboxEventRecord.event_id == claimed.envelope.event_id,
                     OutboxEventRecord.status == OutboxStatus.PROCESSING.value,
-                    OutboxEventRecord.claimed_by == self._worker_id,  # fencing
+                    OutboxEventRecord.claim_token == claimed.claim_token,  # fencing
                 )
-                .values(status=status.value, claimed_by=None, lease_expires_at=None, **values)
+                .values(
+                    status=status.value,
+                    claimed_by=None,
+                    claim_token=None,
+                    lease_expires_at=None,
+                    **values,
+                )
             )
         if cast(CursorResult[Any], result).rowcount != 1:
             logger.warning("outbox lease lost before settling", extra=_log_fields(claimed))
@@ -254,25 +265,41 @@ class OutboxDispatcher:
 
     # ---------------------------------------------------------------- operations
 
-    async def replay_dead(self, event_id: UUID) -> bool:
-        """Give a dead event a fresh start (after the cause was fixed). False if not dead."""
+    async def replay_dead(self, event_id: UUID, *, actor: str, reason: str) -> bool:
+        """Give a dead event a fresh start after its cause was fixed. False if it is not dead.
+
+        The payload is never changed, and the event goes through normal validation and
+        idempotency again. ``last_error`` is kept until the next attempt overwrites it; who
+        replayed it, why, and its previous attempts and error are written to the audit log.
+        """
+        if not actor.strip() or not reason.strip():
+            raise ValueError("a replay needs an actor and a reason")
         async with self._session_factory() as session, session.begin():
-            result = await session.execute(
-                update(OutboxEventRecord)
+            previous = await session.scalar(
+                select(OutboxEventRecord)
                 .where(
                     OutboxEventRecord.event_id == event_id,
                     OutboxEventRecord.status == OutboxStatus.DEAD.value,
                 )
-                .values(
-                    status=OutboxStatus.PENDING.value,
-                    attempts=0,
-                    next_attempt_at=self._clock.now(),
-                )
+                .with_for_update()
             )
-        replayed = cast(CursorResult[Any], result).rowcount == 1
-        if replayed:
-            logger.info("dead outbox event replayed", extra={"event_id": str(event_id)})
-        return replayed
+            if previous is None:
+                return False
+            logger.warning(
+                "dead outbox event replayed",
+                extra={
+                    "event_id": str(event_id),
+                    "event_type": previous.event_type,
+                    "actor": actor,
+                    "reason": reason,
+                    "previous_attempts": previous.attempts,
+                    "previous_error": previous.last_error,
+                },
+            )
+            previous.status = OutboxStatus.PENDING.value
+            previous.attempts = 0
+            previous.next_attempt_at = self._clock.now()
+        return True
 
 
 def _envelope(row: OutboxEventRecord) -> EventEnvelope:

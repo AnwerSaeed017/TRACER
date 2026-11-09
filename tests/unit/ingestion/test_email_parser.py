@@ -56,9 +56,19 @@ def test_not_an_email(raw: bytes) -> None:
         parse(raw)
 
 
-def test_an_email_with_nothing_readable_is_refused() -> None:
+def test_an_email_with_nothing_in_it_is_refused() -> None:
     message = EmailMessage()
     message["From"] = "x@example.com"
     message.set_content("   ")
-    with pytest.raises(InvalidValueError, match="neither a subject nor a readable body"):
+    with pytest.raises(InvalidValueError, match="no subject, readable body or attachment"):
         parse(message.as_bytes())
+
+
+def test_an_attachment_only_email_is_kept() -> None:
+    message = EmailMessage()
+    message["From"] = "x@example.com"
+    message.set_content("")
+    message.add_attachment(b"%PDF-1.7", maintype="application", subtype="pdf", filename="bol.pdf")
+    email = parse(message.as_bytes())
+    assert email.attachment_names == ("bol.pdf",)
+    assert email.subject == ""

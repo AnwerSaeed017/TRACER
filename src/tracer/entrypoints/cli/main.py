@@ -2,12 +2,13 @@
 
 tracer serve [--reload]            run the HTTP API
 tracer worker                      deliver outbox events to their consumers
-tracer outbox replay <event-id>    give a dead-lettered event a fresh start
+tracer outbox replay <event-id> --reason "..."    give a dead-lettered event a fresh start
 """
 
 import argparse
 import asyncio
 import contextlib
+import getpass
 import sys
 from collections.abc import Sequence
 from uuid import UUID
@@ -30,6 +31,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     outbox_commands = outbox.add_subparsers(dest="outbox_command", required=True)
     replay = outbox_commands.add_parser("replay", help="retry a dead-lettered event")
     replay.add_argument("event_id", type=UUID)
+    replay.add_argument("--reason", required=True, help="why it is safe to retry now (audited)")
     args = parser.parse_args(argv)
 
     try:
@@ -52,7 +54,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "worker":
         with contextlib.suppress(KeyboardInterrupt):  # Ctrl+C is the normal way to stop
             asyncio.run(run_worker(settings))
-    elif args.command == "outbox" and not asyncio.run(replay_dead_event(settings, args.event_id)):
+    elif args.command == "outbox" and not asyncio.run(
+        replay_dead_event(settings, args.event_id, actor=getpass.getuser(), reason=args.reason)
+    ):
         sys.stderr.write(f"event {args.event_id} is not dead-lettered; nothing replayed\n")
         return 1
     return 0

@@ -58,7 +58,7 @@ Invalid values stop start-up with a message naming the setting.
 ```bash
 uv run tracer serve                      # http://127.0.0.1:8000/docs
 uv run tracer worker                     # deliver outbox events (run one or several)
-uv run tracer outbox replay <event-id>   # retry a dead-lettered event after fixing its cause
+uv run tracer outbox replay <event-id> --reason "..."   # retry a dead-lettered event (audited)
 ```
 
 The API stores events in a transactional outbox; the worker delivers them to consumers

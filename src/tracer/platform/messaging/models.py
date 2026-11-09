@@ -42,7 +42,10 @@ class OutboxEventRecord(Base):
     status: Mapped[str] = mapped_column(String(16), default=OutboxStatus.PENDING.value)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    claimed_by: Mapped[str | None] = mapped_column(String(100))
+    claimed_by: Mapped[str | None] = mapped_column(String(100))  # which worker (for operators)
+    # The fencing token: new for every claim, so a stale delivery can never settle a newer
+    # claim, not even one made later by the same worker.
+    claim_token: Mapped[UUID | None]
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -55,7 +58,8 @@ class OutboxEventRecord(Base):
         CheckConstraint("aggregate_version >= 1", name="aggregate_version_positive"),
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint(
-            "(status = 'processing') = (claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            "(status = 'processing') = (claimed_by IS NOT NULL AND claim_token IS NOT NULL "
+            "AND lease_expires_at IS NOT NULL)",
             name="lease_matches_status",
         ),
         # The dispatcher's two queries, as small partial indexes: due pending events, and

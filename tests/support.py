@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from tracer.modules.ingestion.adapters.webhook_signature import sign
-from tracer.modules.ingestion.application.intake import DisruptionReportCommand
+from tracer.modules.ingestion.application.intake import DisruptionReportCommand, ReportFields
 from tracer.modules.ingestion.domain.report import ExternalReferences
 from tracer.modules.ingestion.domain.source_document import Channel
 from tracer.platform.configuration.settings import Settings
@@ -58,11 +58,13 @@ def report_command(
         source_event_id=event_id,
         media_type="application/json",
         content=content,
-        kind=kind,
-        summary="SHIP-501 delayed by 7 days",
-        impact_start=None,
-        impact_end=None,
-        references=ExternalReferences(),
+        report=ReportFields(
+            kind=kind,
+            summary="SHIP-501 delayed by 7 days",
+            impact_start=None,
+            impact_end=None,
+            references=ExternalReferences(),
+        ),
     )
 
 

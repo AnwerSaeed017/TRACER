@@ -44,4 +44,4 @@ class DisruptionReportIn(BaseModel):
 
 class ReportReceiptOut(BaseModel):
     document_id: UUID
-    status: Literal["accepted", "duplicate"]
+    status: Literal["accepted", "duplicate", "unrecognised"]

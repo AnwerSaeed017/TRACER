@@ -1,9 +1,9 @@
-"""Use case: a source system delivers a disruption report.
+"""Use case: a source system delivers a document that may report a disruption.
 
     1. look for an earlier document with identical content (a hint, not a verdict)
     2. store the raw document
     3. claim the source's event id in the inbox: this is THE duplicate check
-    4. record DisruptionReportReceived in the outbox
+    4. if a disruption was recognised, record DisruptionReportReceived in the outbox
     5. commit all of it in one transaction
 
 Identity rules:
@@ -12,6 +12,10 @@ Identity rules:
 - identical **content** under a different event id is a new event, accepted and flagged with
   ``possible_duplicate_of``. A missed disruption is worse than a repeated one, so ingestion
   never drops a report on content alone; the consumer decides with business context.
+
+A document in which no disruption was recognised (``report is None``) is still stored as
+evidence and its event id remembered, but no event is recorded: UNRECOGNISED. Such documents
+can be re-examined later by a better extractor (M5) without asking the sender again.
 """
 
 from collections.abc import Callable
@@ -35,8 +39,20 @@ DOCUMENT_AGGREGATE: Final = "source_document"
 
 
 class ReceiptStatus(StrEnum):
-    ACCEPTED = "accepted"
+    ACCEPTED = "accepted"  # stored, and a disruption report event will be delivered
     DUPLICATE = "duplicate"  # this event id was already received; nothing changed
+    UNRECOGNISED = "unrecognised"  # stored as evidence; no disruption recognised in it
+
+
+@dataclass(frozen=True, slots=True)
+class ReportFields:
+    """What the source said about the disruption, already validated or extracted."""
+
+    kind: str
+    summary: str
+    impact_start: datetime | None
+    impact_end: datetime | None
+    references: ExternalReferences
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,11 +63,7 @@ class DisruptionReportCommand:
     source_event_id: str
     media_type: str
     content: bytes  # the exact bytes received, kept as evidence
-    kind: str
-    summary: str
-    impact_start: datetime | None
-    impact_end: datetime | None
-    references: ExternalReferences
+    report: ReportFields | None  # None: nothing recognisable as a disruption
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +112,11 @@ class DisruptionReportIntake:
                 # Leaving without commit also discards this attempt's document insert.
                 return Receipt(ReceiptStatus.DUPLICATE, claim.document_id)
 
+            report = command.report
+            if report is None:
+                await uow.commit()  # evidence and event id kept; nothing to announce
+                return Receipt(ReceiptStatus.UNRECOGNISED, document.id)
+
             uow.record_events(
                 aggregate_type=DOCUMENT_AGGREGATE,
                 aggregate_id=document.id.value,
@@ -113,11 +130,11 @@ class DisruptionReportIntake:
                         source_name=command.source_name,
                         source_event_id=command.source_event_id,
                         possible_duplicate_of=earlier,
-                        kind=command.kind,
-                        summary=command.summary,
-                        impact_start=command.impact_start,
-                        impact_end=command.impact_end,
-                        references=command.references,
+                        kind=report.kind,
+                        summary=report.summary,
+                        impact_start=report.impact_start,
+                        impact_end=report.impact_end,
+                        references=report.references,
                     )
                 ],
             )

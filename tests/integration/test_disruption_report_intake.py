@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tests.support import T0, WEBHOOK_SOURCE, signed_headers, webhook_settings
+from tests.support import T0, WEBHOOK_SOURCE, report_command, signed_headers, webhook_settings
 from tracer.bootstrap.composition_root import Container, build_container
 from tracer.entrypoints.http.app import create_app
 from tracer.modules.ingestion.adapters.persistence.models import (
@@ -18,8 +18,6 @@ from tracer.modules.ingestion.adapters.persistence.models import (
     SourceDocumentRecord,
 )
 from tracer.modules.ingestion.application.intake import DisruptionReportCommand, ReceiptStatus
-from tracer.modules.ingestion.domain.report import ExternalReferences
-from tracer.modules.ingestion.domain.source_document import Channel
 from tracer.platform.messaging.envelope import MessageContext
 from tracer.platform.messaging.models import OutboxEventRecord
 from tracer.shared.clock import FrozenClock
@@ -84,19 +82,7 @@ async def outbox_payloads(sessions: async_sessionmaker[AsyncSession]) -> list[di
 
 
 def command(event_id: str, tenant: TenantId) -> DisruptionReportCommand:
-    return DisruptionReportCommand(
-        tenant_id=tenant,
-        channel=Channel.WEBHOOK,
-        source_name=WEBHOOK_SOURCE,
-        source_event_id=event_id,
-        media_type="application/json",
-        content=REPORT,
-        kind="shipment_delay",
-        summary="SHIP-501 delayed by 7 days",
-        impact_start=None,
-        impact_end=None,
-        references=ExternalReferences(),
-    )
+    return report_command(event_id, tenant, content=REPORT)
 
 
 async def test_an_accepted_report_stores_evidence_inbox_and_event(

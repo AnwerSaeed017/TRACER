@@ -170,6 +170,11 @@ One shared core for every customer; customers differ by **data**, not by code fo
   version. Prompts state general rules, never wording copied from an evaluation case.
 - Untrusted text (emails, documents, supplier messages) is data, never instructions. It is
   marked as evidence and cannot grant permissions.
+- Extraction from free text sits behind a port (`DisruptionExtractor`). The deterministic
+  keyword baseline is the default and the benchmark a model-based extractor must beat.
+  "Nothing recognised" is a valid answer (UNRECOGNISED, evidence kept); never guess a kind.
+- Parse email with the standard library (`email.policy.default`), never by hand. Attachments
+  are listed, not opened.
 - The judge model uses a different provider from the agent it grades unless a setting says
   otherwise.
 - Unit and workflow tests use fake models only; real models run only in evaluations.

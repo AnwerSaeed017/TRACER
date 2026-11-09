@@ -16,9 +16,12 @@ from types import MappingProxyType
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from tracer.modules.ingestion.adapters.email.keyword_extractor import KeywordDisruptionExtractor
+from tracer.modules.ingestion.adapters.email.parser import StandardLibraryEmailParser
 from tracer.modules.ingestion.adapters.persistence.unit_of_work import (
     SqlAlchemyIngestionUnitOfWork,
 )
+from tracer.modules.ingestion.application.email_intake import EmailIntake, ReceivesEmails
 from tracer.modules.ingestion.application.intake import (
     DisruptionReportIntake,
     ReceivesDisruptionReports,
@@ -49,6 +52,7 @@ class Container:
     readiness_checks: tuple[HealthCheck, ...]
     webhook_sources: Mapping[str, WebhookSource]
     disruption_intake: ReceivesDisruptionReports
+    email_intake: ReceivesEmails
     event_handlers: tuple[EventHandler, ...]
     outbox_dispatcher: OutboxDispatcher
 
@@ -88,6 +92,13 @@ def build_container(
     def supply_chain_unit_of_work(context: MessageContext) -> SqlAlchemySupplyChainUnitOfWork:
         return SqlAlchemySupplyChainUnitOfWork(session_factory, clock, context)
 
+    disruption_intake = DisruptionReportIntake(ingestion_unit_of_work, clock)
+    # The extractor is the seam for M5: a model-based extractor replaces the keyword baseline
+    # here, and nothing else changes.
+    email_intake = EmailIntake(
+        StandardLibraryEmailParser(), KeywordDisruptionExtractor(), disruption_intake
+    )
+
     # Every in-process event subscriber. A new consumer is one line here.
     handlers: tuple[EventHandler, ...] = (
         DisruptionReportConsumer(DetectDisruptionFromReport(supply_chain_unit_of_work, clock)),
@@ -100,7 +111,8 @@ def build_container(
         session_factory=session_factory,
         readiness_checks=(DatabaseHealthCheck(engine, head_revision(settings.migrations_dir)),),
         webhook_sources=MappingProxyType({s.name: s for s in settings.webhook_sources}),
-        disruption_intake=DisruptionReportIntake(ingestion_unit_of_work, clock),
+        disruption_intake=disruption_intake,
+        email_intake=email_intake,
         event_handlers=handlers,
         outbox_dispatcher=OutboxDispatcher(
             session_factory,

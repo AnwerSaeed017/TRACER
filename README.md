@@ -8,8 +8,10 @@ customer orders it touches, investigates likely causes against evidence, simulat
 options, verifies them against business rules, asks an authorised person to approve, executes
 through the existing ERP/WMS and confirms the result.
 
-> Status: **M2, integration and ingestion (in progress).** Signed webhook intake with evidence
-> storage, delivery deduplication and a transactional outbox. Domain model (M1) in place.
+> Status: **M2 complete.** Signed webhook and email intake with evidence storage and
+> deduplication; a transactional outbox delivered by workers at least once, in order, with
+> retries and dead-lettering; reports become `DisruptionCase`s idempotently. Next: M3, the
+> temporal knowledge graph.
 
 ## Requirements
 
@@ -66,6 +68,10 @@ disruption report becomes a `DisruptionCase` once a worker has delivered it.
 - `GET /health/live`: the process is up.
 - `GET /health/ready`: the database is reachable and migrated to the latest revision.
 - `POST /webhooks/{source}/disruption-reports`: a signed disruption report (see below).
+- `POST /webhooks/{source}/emails`: a signed raw email (`Content-Type: message/rfc822`), as an
+  inbound-email gateway delivers it. Same headers and signature as reports; the signed body is
+  the whole MIME message. Answers `accepted` (a disruption was recognised), `unrecognised`
+  (kept as evidence, no case) or `duplicate`.
 
 ### Sending a webhook
 

@@ -75,9 +75,12 @@ def test_a_signed_valid_report_is_handed_to_the_use_case() -> None:
     assert command.source_name == WEBHOOK_SOURCE
     assert command.source_event_id == "evt-1"
     assert command.content == content  # the exact bytes, kept as evidence
-    assert command.kind == "shipment_delay"
-    assert command.summary == "SHIP-501 delayed by 7 days"
-    assert command.references == ExternalReferences(suppliers=("SUP-001",), shipments=("SHIP-501",))
+    assert command.report is not None
+    assert command.report.kind == "shipment_delay"
+    assert command.report.summary == "SHIP-501 delayed by 7 days"
+    assert command.report.references == ExternalReferences(
+        suppliers=("SUP-001",), shipments=("SHIP-501",)
+    )
     assert context.causation_id == "webhook:evt-1"
     assert context.correlation_id is not None  # the request id
 

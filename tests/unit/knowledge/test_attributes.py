@@ -124,3 +124,36 @@ class TestValues:
         assert problem is not None
         assert problem.startswith(f"{definition.name}: ")
         assert message in problem
+
+
+class TestReviewRules:
+    def test_null_is_never_a_value(self) -> None:
+        problem = attribute("city").check(None)
+        assert problem == "city: must not be null (omit an attribute that has no value)"
+
+    def test_exclusive_minimum_expresses_positive(self) -> None:
+        positive = attribute(
+            "quantity",
+            T.QUANTITY,
+            dimension=Dimension.COUNT,
+            minimum=Decimal(0),
+            exclusive_minimum=True,
+        )
+        assert positive.check({"amount": "1", "unit": "EACH"}) is None
+        assert "greater than 0" in (positive.check({"amount": "0", "unit": "EACH"}) or "")
+        assert "greater than 0" in (positive.check({"amount": "-5", "unit": "EACH"}) or "")
+
+    def test_bounds_apply_to_money_amounts(self) -> None:
+        price = attribute("unit_price", T.MONEY, minimum=Decimal(0))
+        assert price.check({"amount": "0", "currency": "USD"}) is None
+        assert "at least 0" in (price.check({"amount": "-1", "currency": "USD"}) or "")
+
+    def test_exclusive_minimum_needs_a_minimum(self) -> None:
+        with pytest.raises(InvalidValueError, match="needs a minimum"):
+            attribute("x", T.DECIMAL, exclusive_minimum=True)
+
+    def test_equal_decimals_are_one_contract_and_one_fingerprint(self) -> None:
+        one = attribute("x", T.DECIMAL, minimum=Decimal("1"))
+        one_point_oh = attribute("x", T.DECIMAL, minimum=Decimal("1.00"))
+        assert one.to_json() == one_point_oh.to_json()
+        assert one.same_contract_as(one_point_oh)

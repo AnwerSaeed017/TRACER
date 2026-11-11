@@ -118,7 +118,15 @@ _TYPES: Final = (
     ),
 )
 
-_COUNT = _a("quantity", AttributeType.QUANTITY, required=True, dimension=Dimension.COUNT)
+# A quantity carried, required, held or allocated is strictly positive (> 0 EACH).
+_COUNT = _a(
+    "quantity",
+    AttributeType.QUANTITY,
+    required=True,
+    dimension=Dimension.COUNT,
+    minimum=_ZERO,
+    exclusive_minimum=True,
+)
 
 _RELATIONS: Final = (
     RelationTypeDefinition(

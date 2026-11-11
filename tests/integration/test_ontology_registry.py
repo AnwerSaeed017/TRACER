@@ -171,7 +171,7 @@ async def test_tampered_rows_are_detected_when_loaded(
 
 
 async def test_concurrent_publishes_of_one_package_cannot_both_win(
-    registry: OntologyRegistry,
+    registry: OntologyRegistry, sessions: async_sessionmaker[AsyncSession]
 ) -> None:
     core = await publish_core(registry)
     tenant = TenantId.new()
@@ -196,6 +196,16 @@ async def test_concurrent_publishes_of_one_package_cannot_both_win(
     assert len(lost) == 1
     assert isinstance(lost[0], ConcurrencyConflictError | OntologyError)
     assert won[0].package.version == 1
+    # The loser left nothing behind: core + one tenant version, and only the winner's types.
+    assert await row_counts(sessions) == (2, len(CORE_ONTOLOGY.entity_types) + 1)
+
+
+async def row_counts(sessions: async_sessionmaker[AsyncSession]) -> tuple[int, int]:
+    """(package versions, entity type rows)."""
+    async with sessions() as session:
+        packages = await session.scalar(text("SELECT count(*) FROM ontology_packages"))
+        types = await session.scalar(text("SELECT count(*) FROM ontology_entity_types"))
+    return int(packages or 0), int(types or 0)
 
 
 async def test_the_database_refuses_a_second_copy_of_the_same_version(
@@ -223,3 +233,4 @@ async def test_the_database_refuses_a_second_copy_of_the_same_version(
     with pytest.raises(ConcurrencyConflictError, match="ontology package"):
         await racing
     assert (await registry.resolve_for_tenant(tenant)).entity_type("acme.COLD_ROOM")
+    assert await row_counts(sessions) == (2, len(CORE_ONTOLOGY.entity_types) + 1)  # no partial copy

@@ -1,5 +1,7 @@
 """Cross-package rules, inheritance, and validation of graph values against the ontology."""
 
+from dataclasses import replace
+
 import pytest
 
 from tests.knowledge import CORE, attribute, published, tenant_content
@@ -213,3 +215,43 @@ class TestTenantExtensions:
     def test_two_versions_of_one_package_cannot_be_combined(self) -> None:
         with pytest.raises(OntologyError, match="two versions of the same package"):
             ResolvedOntology([CORE, published(CORE_ONTOLOGY, version=2)])
+
+
+class TestSnapshotsAndDeprecation:
+    def test_the_snapshot_is_the_leaf_package_and_covers_the_whole_chain(self) -> None:
+        tenant_package = published(tenant_content(TENANT))
+        ontology = ResolvedOntology([CORE, tenant_package])
+        assert ontology.snapshot_id == tenant_package.id
+        same = ResolvedOntology([CORE, tenant_package])
+        assert ontology.snapshot_fingerprint == same.snapshot_fingerprint
+        other_core = published(CORE_ONTOLOGY)  # same content, different package version id
+        assert (
+            ResolvedOntology([other_core]).snapshot_fingerprint
+            != ResolvedOntology([CORE]).snapshot_fingerprint
+        )
+
+    def test_deprecated_types_keep_existing_data_valid_but_refuse_new_instances(self) -> None:
+        deprecated_core = published(
+            replace(
+                CORE_ONTOLOGY,
+                entity_types=tuple(
+                    replace(t, deprecated=True) if t.key == "CARRIER" else t
+                    for t in CORE_ONTOLOGY.entity_types
+                ),
+            )
+        )
+        ontology = ResolvedOntology([deprecated_core])
+        assert ontology.validate_properties("CARRIER", {}) == []  # existing data still valid
+        assert ontology.creation_problems("CARRIER") == [
+            "CARRIER is deprecated: existing entities remain, new ones are refused"
+        ]
+        assert ontology.creation_problems("SUPPLIER") == []
+        assert ontology.creation_problems("FACILITY") == [
+            "FACILITY is abstract and cannot have instances"
+        ]
+
+    def test_core_quantities_are_strictly_positive(self) -> None:
+        problems = CORE_ONLY.validate_relation(
+            "CARRIES", "SHIPMENT", "PRODUCT", {"quantity": {"amount": "-5", "unit": "EACH"}}
+        )
+        assert problems == ["CARRIES.quantity: must be greater than 0"]

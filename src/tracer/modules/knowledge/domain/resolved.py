@@ -12,6 +12,7 @@ out-of-range attributes; abstract types) and relation endpoints and properties, 
 accepted wherever their parent is.
 """
 
+import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -146,6 +147,48 @@ class ResolvedOntology:
     @property
     def tenant_id(self) -> TenantId | None:
         return next((p.content.tenant_id for p in self._packages if p.content.tenant_id), None)
+
+    @property
+    def snapshot_id(self) -> OntologyPackageId:
+        """Identifies this exact ontology: the leaf package. Every package pins its dependencies
+        and published packages never change, so the leaf id fixes the whole closure. This is
+        what a graph write records as "validated under"."""
+        return self._packages[-1].id
+
+    @property
+    def snapshot_fingerprint(self) -> str:
+        """SHA-256 over the chain's package fingerprints, in order: verifies the whole closure."""
+        material = "|".join(f"{p.id}:{p.fingerprint}" for p in self._packages)
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def creation_problems(self, type_key: str) -> list[str]:
+        """Why a *new* entity of this type may not be created ([] if it may).
+
+        Deprecation semantics: existing entities of a deprecated type stay valid, readable and
+        traversable; new ones are refused; nothing deprecated is ever removed.
+        """
+        resolved = self._types.get(type_key)
+        if resolved is None:
+            return [f"unknown entity type {type_key}"]
+        problems = []
+        if resolved.abstract:
+            problems.append(f"{type_key} is abstract and cannot have instances")
+        if resolved.definition.deprecated:
+            problems.append(
+                f"{type_key} is deprecated: existing entities remain, new ones are refused"
+            )
+        return problems
+
+    def relation_creation_problems(self, relation_key: str) -> list[str]:
+        """Why a *new* relation of this type may not be created; same deprecation semantics."""
+        relation = self._relations.get(relation_key)
+        if relation is None:
+            return [f"unknown relation type {relation_key}"]
+        if relation.definition.deprecated:
+            return [
+                f"{relation_key} is deprecated: existing relations remain, new ones are refused"
+            ]
+        return []
 
     @property
     def entity_type_keys(self) -> frozenset[str]:

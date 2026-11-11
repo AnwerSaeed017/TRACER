@@ -5,6 +5,7 @@ re-validated) and recomputes its fingerprint: a package whose stored rows no lon
 fingerprint recorded at publish time is refused, not trusted.
 """
 
+import logging
 from typing import Any
 
 from sqlalchemy import select
@@ -30,6 +31,7 @@ from tracer.shared.errors import ConcurrencyConflictError
 from tracer.shared.identifiers import TenantId
 
 _UNIQUE_VIOLATION = "23505"
+logger = logging.getLogger("tracer.knowledge")
 
 
 class CorruptOntologyError(RuntimeError):
@@ -146,6 +148,16 @@ class SqlAlchemyOntologyRepository:
             ),
         )
         if package.fingerprint != record.content_sha256:
+            # Fail closed, loudly: never fall back to another version or use the rows anyway.
+            logger.critical(
+                "ontology integrity failure",
+                extra={
+                    "package_id": str(record.id),
+                    "package": package.label(),
+                    "stored_sha256": record.content_sha256,
+                    "computed_sha256": package.fingerprint,
+                },
+            )
             raise CorruptOntologyError(
                 f"{package.label()} does not match its published fingerprint"
             )

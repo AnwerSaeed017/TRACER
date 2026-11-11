@@ -8,10 +8,11 @@ customer orders it touches, investigates likely causes against evidence, simulat
 options, verifies them against business rules, asks an authorised person to approve, executes
 through the existing ERP/WMS and confirms the result.
 
-> Status: **M2 complete.** Signed webhook and email intake with evidence storage and
-> deduplication; a transactional outbox delivered by workers at least once, in order, with
-> retries and dead-lettering; reports become `DisruptionCase`s idempotently. Next: M3, the
-> temporal knowledge graph.
+> Status: **M3 in progress (M3.1 ontology registry done).** M2 complete: signed webhook and
+> email intake with evidence storage and deduplication; a transactional outbox delivered by
+> workers at least once, in order, with retries and dead-lettering; reports become
+> `DisruptionCase`s idempotently. M3.1: a versioned, immutable ontology (shared core + industry
+> and tenant extensions) that validates every future graph write.
 
 ## Requirements
 
@@ -59,6 +60,7 @@ Invalid values stop start-up with a message naming the setting.
 uv run tracer serve                      # http://127.0.0.1:8000/docs
 uv run tracer worker                     # deliver outbox events (run one or several)
 uv run tracer outbox replay <event-id> --reason "..."   # retry a dead-lettered event (audited)
+uv run tracer ontology publish-core      # publish the core ontology (no-op when unchanged)
 ```
 
 The API stores events in a transactional outbox; the worker delivers them to consumers

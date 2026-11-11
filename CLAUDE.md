@@ -121,6 +121,23 @@ One shared core for every customer; customers differ by **data**, not by code fo
 - Timestamps are `TIMESTAMPTZ` in UTC. Read time from the injected `Clock`, never
   `datetime.now()`.
 
+## Ontology (M3.1)
+
+- Packages: `tracer.core` (ontology as code, `knowledge/domain/core_ontology.py`), industry
+  packages, one `tenant` package per tenant. A tenant's ontology = its latest tenant package +
+  exactly the versions it pins. Never copy the core.
+- Published versions are immutable (code + database triggers). Change = a new version that must
+  pass `incompatibilities()`: add or deprecate; never remove, redefine, narrow or add a required
+  attribute. Publishing identical content is a no-op.
+- Non-core keys carry their package namespace (`acme.COLD_ROOM`). Tenants extend (subtypes,
+  new relations, optional attributes on existing types); they never redefine.
+- Attributes use the closed vocabulary in `attributes.py` (no arbitrary JSON Schema). Money and
+  quantity carry currency/unit per value; decimals are exact strings.
+- Type inheritance (`IS_A`) is ontology; business hierarchy (`PART_OF`) is graph edges; causality
+  is an explicit, evidenced claim, never inferred from a path. N-ary facts are reified as nodes.
+- Every graph write is validated by `ResolvedOntology.validate_properties()` /
+  `validate_relation()`. Graph-wide business invariants stay in domain services.
+
 ## Knowledge graph (M3)
 
 - Four core tables: `ontology_entity_types`, `ontology_relation_types`, `graph_nodes`,

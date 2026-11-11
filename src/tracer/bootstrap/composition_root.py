@@ -26,6 +26,10 @@ from tracer.modules.ingestion.application.intake import (
     DisruptionReportIntake,
     ReceivesDisruptionReports,
 )
+from tracer.modules.knowledge.adapters.persistence.unit_of_work import (
+    SqlAlchemyOntologyUnitOfWork,
+)
+from tracer.modules.knowledge.application.ontology_registry import OntologyRegistry
 from tracer.modules.supply_chain.adapters.messaging.report_consumer import (
     DisruptionReportConsumer,
 )
@@ -55,6 +59,7 @@ class Container:
     email_intake: ReceivesEmails
     event_handlers: tuple[EventHandler, ...]
     outbox_dispatcher: OutboxDispatcher
+    ontology_registry: OntologyRegistry
 
     async def aclose(self) -> None:
         """Release pooled connections. Called once when the process shuts down."""
@@ -121,5 +126,8 @@ def build_container(
             dispatch_policy(settings),
             worker_id or default_worker_id(),
             jitter,
+        ),
+        ontology_registry=OntologyRegistry(
+            lambda: SqlAlchemyOntologyUnitOfWork(session_factory), clock
         ),
     )

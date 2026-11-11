@@ -22,12 +22,14 @@ from tracer.shared.errors import (
     DomainError,
     InvalidTransitionError,
     InvalidValueError,
+    NotFoundError,
 )
 
 logger = logging.getLogger("tracer.http")
 
 _STATUS_BY_ERROR: tuple[tuple[type[DomainError], HTTPStatus], ...] = (
     (AuthenticationError, HTTPStatus.UNAUTHORIZED),
+    (NotFoundError, HTTPStatus.NOT_FOUND),
     (InvalidValueError, HTTPStatus.UNPROCESSABLE_ENTITY),
     (ConcurrencyConflictError, HTTPStatus.CONFLICT),
     (InvalidTransitionError, HTTPStatus.CONFLICT),

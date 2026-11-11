@@ -102,6 +102,7 @@ name = "Modules are independent; they share only the kernel and refer to each ot
 type = "independence"
 modules = [
     "tracer.modules.ingestion",
+    "tracer.modules.knowledge",
     "tracer.modules.supply_chain",
     "tracer.modules.decisioning",
     "tracer.modules.execution",

@@ -3,6 +3,7 @@
 tracer serve [--reload]            run the HTTP API
 tracer worker                      deliver outbox events to their consumers
 tracer outbox replay <event-id> --reason "..."    give a dead-lettered event a fresh start
+tracer ontology publish-core       publish the core ontology from code (no-op if unchanged)
 """
 
 import argparse
@@ -16,6 +17,7 @@ from uuid import UUID
 import uvicorn
 from pydantic import ValidationError
 
+from tracer.entrypoints.cli.ontology import publish_core
 from tracer.entrypoints.workers.outbox_worker import replay_dead_event, run_worker
 from tracer.platform.configuration.settings import load_settings
 from tracer.platform.observability.logging import configure_logging
@@ -32,6 +34,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     replay = outbox_commands.add_parser("replay", help="retry a dead-lettered event")
     replay.add_argument("event_id", type=UUID)
     replay.add_argument("--reason", required=True, help="why it is safe to retry now (audited)")
+    ontology = commands.add_parser("ontology", help="manage the ontology")
+    ontology_commands = ontology.add_subparsers(dest="ontology_command", required=True)
+    ontology_commands.add_parser("publish-core", help="publish the core ontology from code")
     args = parser.parse_args(argv)
 
     try:
@@ -54,6 +59,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "worker":
         with contextlib.suppress(KeyboardInterrupt):  # Ctrl+C is the normal way to stop
             asyncio.run(run_worker(settings))
+    elif args.command == "ontology":
+        return asyncio.run(publish_core(settings))
     elif args.command == "outbox" and not asyncio.run(
         replay_dead_event(settings, args.event_id, actor=getpass.getuser(), reason=args.reason)
     ):

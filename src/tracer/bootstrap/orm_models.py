@@ -5,6 +5,7 @@ When a module gains tables, import its models module here; autogenerate will the
 """
 
 import tracer.modules.ingestion.adapters.persistence.models
+import tracer.modules.knowledge.adapters.persistence.models
 import tracer.modules.supply_chain.adapters.persistence.models
 import tracer.platform.messaging.models  # noqa: F401
 from tracer.platform.database.base import Base

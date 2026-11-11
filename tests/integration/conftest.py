@@ -72,8 +72,11 @@ async def migrated(alembic_config: Config) -> None:
 
 # Every table the application writes. Each test that uses `sessions` starts from empty tables.
 APPLICATION_TABLES = (
-    "outbox_events, processed_events, disruption_cases, inbox_messages, source_documents"
+    "outbox_events, processed_events, disruption_cases, inbox_messages, source_documents, "
+    "ontology_relation_types, ontology_entity_types, ontology_packages"
 )
+# TRUNCATE is deliberately not blocked by the ontology immutability triggers (row-level
+# UPDATE/DELETE only), which is what lets each test start from empty tables.
 
 
 @pytest.fixture

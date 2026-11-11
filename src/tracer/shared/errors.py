@@ -41,6 +41,10 @@ class BusinessRuleError(DomainError):
     """A rule other than a status check refused the operation."""
 
 
+class NotFoundError(DomainError):
+    """The thing asked for does not exist (for this tenant)."""
+
+
 class AuthenticationError(DomainError):
     """The caller could not prove who it is. The message is deliberately generic."""
 
